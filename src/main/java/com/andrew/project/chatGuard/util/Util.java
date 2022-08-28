@@ -103,14 +103,6 @@ public class Util {
                 .build();
     }
 
-    public SendMessage createUserNeedsRightsMessage(Message message) {
-        return SendMessage.builder()
-                .text(translations.getUserNeedsRightsMsg())
-                .parseMode(PARSE_MODE_MARKDOWN)
-                .chatId(message.getChatId())
-                .build();
-    }
-
     public SendMessage createWelcomeMessage(ChatMemberUpdated chatMemberUpdated) {
         return SendMessage.builder()
                 .text(String.format(

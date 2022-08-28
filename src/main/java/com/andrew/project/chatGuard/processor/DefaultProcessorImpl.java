@@ -81,50 +81,46 @@ public class DefaultProcessorImpl implements Processor {
     private void processCommand(Message message, ChatInfo chatInfo) {
         MessageEntity messageEntity = message.getEntities().get(0);
         if (messageEntity.getType().equals(BOT_COMMAND)) {
-            if (messageEntity.getText().equals(BotCommand.CHECK_SETTINGS + "@" + util.getUsername())) {
-                executor.execute(util.createSettingsInfoMessage(message, chatInfo));
-            } else {
-                GetChatAdministrators getChatAdministrators = GetChatAdministrators.builder()
-                        .chatId(message.getChatId())
-                        .build();
-                List<ChatMember> chatAdministratorList = executor.execute(getChatAdministrators);
-                if (util.containsUser(chatAdministratorList, message.getFrom())) {
-                    if (messageEntity.getText().equals(BotCommand.WAITING_TIME + "@" + util.getUsername())) {
-                        try {
-                            String[] command = message.getText().split(" ");
-                            if (command.length == 2) {
-                                long waitingTime = Long.parseLong(command[1]);
-                                chatInfo.setWaitingTime(waitingTime);
-                                chatInfoService.save(chatInfo);
-                                executor.execute(util.createSettingsChangedMessage(message));
-                            } else {
-                                throw new Exception();
-                            }
-                        } catch (Exception ignore) {
-                            executor.execute(util.createWrongFormatBotCommandMessage(message));
-                        }
-                    } else if (messageEntity.getText().equals(BotCommand.REMOVE_TYPE + "@" + util.getUsername())) {
+            GetChatAdministrators getChatAdministrators = GetChatAdministrators.builder()
+                    .chatId(message.getChatId())
+                    .build();
+            List<ChatMember> chatAdministratorList = executor.execute(getChatAdministrators);
+            if (util.containsUser(chatAdministratorList, message.getFrom())) {
+                if (messageEntity.getText().equals(BotCommand.CHECK_SETTINGS + "@" + util.getUsername())) {
+                    executor.execute(util.createSettingsInfoMessage(message, chatInfo));
+                } else if (messageEntity.getText().equals(BotCommand.WAITING_TIME + "@" + util.getUsername())) {
+                    try {
                         String[] command = message.getText().split(" ");
-                        try {
-                            if (command.length == 2) {
-                                if (RemoveType.KICK.equals(command[1])) {
-                                    chatInfo.setBanUser(false);
-                                } else if (RemoveType.BAN.equals(command[1])) {
-                                    chatInfo.setBanUser(true);
-                                } else {
-                                    throw new Exception();
-                                }
-                                chatInfoService.save(chatInfo);
-                                executor.execute(util.createSettingsChangedMessage(message));
+                        if (command.length == 2) {
+                            long waitingTime = Long.parseLong(command[1]);
+                            chatInfo.setWaitingTime(waitingTime);
+                            chatInfoService.save(chatInfo);
+                            executor.execute(util.createSettingsChangedMessage(message));
+                        } else {
+                            throw new Exception();
+                        }
+                    } catch (Exception ignore) {
+                        executor.execute(util.createWrongFormatBotCommandMessage(message));
+                    }
+                } else if (messageEntity.getText().equals(BotCommand.REMOVE_TYPE + "@" + util.getUsername())) {
+                    String[] command = message.getText().split(" ");
+                    try {
+                        if (command.length == 2) {
+                            if (RemoveType.KICK.equals(command[1])) {
+                                chatInfo.setBanUser(false);
+                            } else if (RemoveType.BAN.equals(command[1])) {
+                                chatInfo.setBanUser(true);
                             } else {
                                 throw new Exception();
                             }
-                        } catch (Exception ignore) {
-                            executor.execute(util.createWrongFormatBotCommandMessage(message));
+                            chatInfoService.save(chatInfo);
+                            executor.execute(util.createSettingsChangedMessage(message));
+                        } else {
+                            throw new Exception();
                         }
+                    } catch (Exception ignore) {
+                        executor.execute(util.createWrongFormatBotCommandMessage(message));
                     }
-                } else {
-                    executor.execute(util.createUserNeedsRightsMessage(message));
                 }
             }
         }

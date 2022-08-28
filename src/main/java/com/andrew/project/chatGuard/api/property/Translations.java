@@ -20,7 +20,6 @@ public class Translations {
     private String notProvided;
     private String settingsChangedMsg;
     private String wrongFormatBotCommandMsg;
-    private String userNeedsRightsMsg;
     private String welcomeMsg;
     private String lostAdministratorRightsMsg;
     private String enoughRightsMsg;
