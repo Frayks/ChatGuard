@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN">
+    <Properties>
+        <Property name="pattern">%d{yyyy-MM-dd HH:mm:ss.SSS} %-5p {%t} [%c{1}] - %m%n</Property>
+        <Property name="log.dir">./log</Property>
+    </Properties>
+    <Appenders>
+        <Console name="system-out" target="SYSTEM_OUT">
+            <ThresholdFilter level="warn" onMatch="DENY" onMismatch="NEUTRAL"/>
+            <PatternLayout pattern="${pattern}"/>
+        </Console>
+        <Console name="system-err" target="SYSTEM_ERR">
+            <ThresholdFilter level="warn" onMatch="NEUTRAL" onMismatch="DENY"/>
+            <PatternLayout pattern="${pattern}"/>
+        </Console>
+        <RollingFile name="file-out-debug"
+                     fileName="${log.dir}/log-debug.log"
+                     filePattern="${log.dir}/log-debug.log-%d{yyyyMMddHHmmss}.zip"
+                     append="true">
+            <Policies>
+                <SizeBasedTriggeringPolicy size="50MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="100">
+                <Delete basePath="${log.dir}">
+                    <IfFileName glob="log-debug.log*.zip">
+                        <IfAny>
+                            <IfLastModified age="10d"/>
+                            <IfAccumulatedFileCount exceeds="100"/>
+                        </IfAny>
+                    </IfFileName>
+                </Delete>
+            </DefaultRolloverStrategy>
+            <ThresholdFilter level="DEBUG" onMatch="NEUTRAL" onMismatch="DENY"/>
+            <PatternLayout pattern="${pattern}"/>
+        </RollingFile>
+        <RollingFile name="file-out-info"
+                     fileName="${log.dir}/log-info.log"
+                     filePattern="${log.dir}/log-info.log-%d{yyyyMMddHHmmss}.zip"
+                     append="true">
+            <Policies>
+                <SizeBasedTriggeringPolicy size="50MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="100">
+                <Delete basePath="${log.dir}">
+                    <IfFileName glob="log-info.log*.zip">
+                        <IfAny>
+                            <IfLastModified age="10d"/>
+                            <IfAccumulatedFileCount exceeds="100"/>
+                        </IfAny>
+                    </IfFileName>
+                </Delete>
+            </DefaultRolloverStrategy>
+            <ThresholdFilter level="INFO" onMatch="NEUTRAL" onMismatch="DENY"/>
+            <PatternLayout pattern="${pattern}"/>
+        </RollingFile>
+    </Appenders>
+    <Loggers>
+        <Root level="info">
+            <AppenderRef ref="system-out"/>
+            <AppenderRef ref="system-err"/>
+            <AppenderRef ref="file-out-debug"/>
+            <AppenderRef ref="file-out-info"/>
+        </Root>
+    </Loggers>
+</Configuration>

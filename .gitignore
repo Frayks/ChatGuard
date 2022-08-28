@@ -1,0 +1,11 @@
+### IntelliJ and WebStorm IDEA directory ###
+.idea
+
+### Maven Wrapper directory ###
+.mvn
+
+### Maven target directory ###
+target
+
+### Log files ###
+log
