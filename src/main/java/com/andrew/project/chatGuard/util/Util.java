@@ -18,6 +18,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 
 @Component
@@ -74,7 +75,8 @@ public class Util {
                         translations.getSettingsInfoMsg(),
                         chatInfo.getWaitingTime(),
                         chatInfo.isBanUser() ? RemoveType.BAN : RemoveType.KICK,
-                        chatInfo.getBotPermissions().isCanRestrictMembers() ? translations.getProvided() : translations.getNotProvided()
+                        chatInfo.getBotPermissions().isCanRestrictMembers() ? translations.getProvided() : translations.getNotProvided(),
+                        chatInfo.getBotPermissions().isCanDeleteMessages() ? translations.getProvided() : translations.getNotProvided()
                 ))
                 .parseMode(PARSE_MODE_MARKDOWN)
                 .chatId(message.getChatId())
@@ -147,6 +149,14 @@ public class Util {
                 .build();
     }
 
+    public SendMessage createUserBannedMessage(ChatInfo chatInfo, User user) {
+        return SendMessage.builder()
+                .text(String.format(translations.getUserBannedMsg(), user.getFirstName()))
+                .parseMode(PARSE_MODE_MARKDOWN)
+                .chatId(chatInfo.getId())
+                .build();
+    }
+
     public boolean containsUser(List<ChatMember> chatMemberList, User user) {
         for (ChatMember chatMember : chatMemberList) {
             if (chatMember.getUser().getId().equals(user.getId())) {
@@ -168,6 +178,10 @@ public class Util {
         return userList;
     }
 
+    public int getUnixTime(Date date) {
+        return Math.toIntExact(date.getTime() / 1000);
+    }
+
     public String getUsername() {
         return username;
     }
@@ -176,4 +190,5 @@ public class Util {
     public void setTranslations(Translations translations) {
         this.translations = translations;
     }
+
 }

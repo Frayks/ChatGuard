@@ -26,5 +26,6 @@ public class Translations {
     private String notEnoughRightsMsg;
     private String privateChatMsg;
     private String animationFileId;
+    private String userBannedMsg;
 
 }
