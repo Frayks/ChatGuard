@@ -1,17 +1,21 @@
 package com.andrew.project.chatGuard.scheduler;
 
 import com.andrew.project.chatGuard.api.entities.ChatInfo;
+import com.andrew.project.chatGuard.api.entities.TaskInfo;
 import com.andrew.project.chatGuard.api.executor.Executor;
+import com.andrew.project.chatGuard.api.service.TaskInfoService;
 import com.andrew.project.chatGuard.task.TaskRemoveUser;
 import com.andrew.project.chatGuard.util.Util;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.telegram.telegrambots.meta.api.methods.groupadministration.BanChatMember;
+import org.telegram.telegrambots.meta.api.methods.groupadministration.UnbanChatMember;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.User;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,66 +24,74 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 @Component
-public class SchedulerRemoveUser {
+public class SchedulerRemoveUser implements InitializingBean {
 
     private static final Logger LOGGER = LogManager.getLogger(SchedulerRemoveUser.class);
 
-    private final Map<String, ScheduledFuture<?>> taskMap = new HashMap<>();
+    private final Map<Long, ScheduledFuture<?>> taskMap = new HashMap<>();
+    private TaskInfoService taskInfoService;
     private Executor executor;
     private Util util;
     private ScheduledExecutorService scheduledExecutorService;
-    public static final String DELIMITER = "_";
+
+    @Override
+    public void afterPropertiesSet() throws Exception {
+        taskInfoService.deleteAll();
+    }
 
     public void createTask(ChatInfo chatInfo, Message sentMessage, User user) {
-        String key = createKey(chatInfo.getId(), sentMessage.getMessageId(), user.getId());
-        TaskRemoveUser taskRemoveUser = new TaskRemoveUser(chatInfo, user, executor, util);
+        TaskInfo taskInfo = new TaskInfo();
+        taskInfo.setChatId(chatInfo.getId());
+        taskInfo.setMessageId(sentMessage.getMessageId());
+        taskInfo.setUserId(user.getId());
+        taskInfo.setFirstName(user.getFirstName());
+        taskInfo = taskInfoService.save(taskInfo);
+        TaskRemoveUser taskRemoveUser = new TaskRemoveUser(taskInfo.getId(), this);
         ScheduledFuture<?> future = scheduledExecutorService.schedule(taskRemoveUser, chatInfo.getWaitingTime(), TimeUnit.MINUTES);
-        taskMap.put(key, future);
-        LOGGER.info("Created task remove user! key=" + key + ", waitingTime=" + chatInfo.getWaitingTime() + ", banUser=" + chatInfo.isBanUser());
+        taskMap.put(taskInfo.getId(), future);
+        LOGGER.info("Created task remove user! taskId=" + taskInfo.getId() + ", waitingTime=" + chatInfo.getWaitingTime() + ", banUser=" + chatInfo.isBanUser());
     }
 
-    public List<String> getTasksKeysByParams(Long chatId, Integer messageId, Long userId) {
-        List<String> keyList = new ArrayList<>(taskMap.keySet());
-        keyList.removeIf(key -> !keyHasMatchingParts(key, chatId, messageId, userId));
-        return keyList;
-    }
-
-    public void cancelTasks(List<String> keyList) {
-        for (String key : keyList) {
-            ScheduledFuture<?> scheduledFuture = taskMap.get(key);
+    public void cancelTasks(List<TaskInfo> taskInfoList) {
+        for (TaskInfo taskInfo : taskInfoList) {
+            Long taskId = taskInfo.getId();
+            ScheduledFuture<?> scheduledFuture = taskMap.get(taskId);
             if (scheduledFuture != null) {
                 scheduledFuture.cancel(false);
-                taskMap.remove(key);
-                LOGGER.info("Removed task remove user! key=" + key);
+                taskMap.remove(taskId);
+                taskInfoService.deleteTaskInfoRemoveUserById(taskId);
+                LOGGER.info("Removed task remove user! taskId=" + taskId);
             }
         }
     }
 
-    private boolean keyHasMatchingParts(String key, Long chatId, Integer messageId, Long userId) {
-        String[] partsOfKey = key.split(DELIMITER);
-        boolean chatIdEquals = chatId == null || chatId.equals(Long.parseLong(partsOfKey[0]));
-        boolean messageIdEquals = messageId == null || messageId.equals(Integer.parseInt(partsOfKey[1]));
-        boolean userIdEquals = userId == null || userId.equals(Long.parseLong(partsOfKey[2]));
-        return chatIdEquals && messageIdEquals && userIdEquals;
+    public void executeTaskRemoveUser(Long id) {
+        TaskInfo taskInfo = taskInfoService.findById(id);
+        LOGGER.info("Started task remove user! id=" + id +
+                ", chatId=" + taskInfo.getChatId() +
+                ", userId=" + taskInfo.getUserId() +
+                ", banUser=" + taskInfo.isBanUser());
+        BanChatMember banChatMember = BanChatMember.builder()
+                .chatId(taskInfo.getChatId())
+                .userId(taskInfo.getUserId())
+                .build();
+        executor.execute(banChatMember);
+        if (!taskInfo.isBanUser()) {
+            UnbanChatMember unbanChatMember = UnbanChatMember.builder()
+                    .chatId(taskInfo.getChatId())
+                    .userId(taskInfo.getUserId())
+                    .onlyIfBanned(true)
+                    .build();
+            executor.execute(unbanChatMember);
+        }
+        executor.execute(util.createUserBannedMessage(taskInfo.getChatId(), taskInfo.getFirstName()));
+        taskInfoService.deleteTaskInfoRemoveUserById(id);
     }
 
-    private String createKey(Long chatId, Integer messageId, Long userId) {
-        return chatId + DELIMITER + messageId + DELIMITER + userId;
-    }
 
-    public Long getChatId(String key) {
-        String[] partsOfKey = key.split(DELIMITER);
-        return Long.parseLong(partsOfKey[0]);
-    }
-
-    public Integer getMessageId(String key) {
-        String[] partsOfKey = key.split(DELIMITER);
-        return Integer.parseInt(partsOfKey[1]);
-    }
-
-    public Long detUserId(String key) {
-        String[] partsOfKey = key.split(DELIMITER);
-        return Long.parseLong(partsOfKey[2]);
+    @Autowired
+    public void setTaskInfoRemoveUserService(TaskInfoService taskInfoService) {
+        this.taskInfoService = taskInfoService;
     }
 
     @Autowired
@@ -96,4 +108,5 @@ public class SchedulerRemoveUser {
     public void setScheduledExecutorService(ScheduledExecutorService scheduledExecutorService) {
         this.scheduledExecutorService = scheduledExecutorService;
     }
+
 }

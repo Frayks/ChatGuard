@@ -4,9 +4,11 @@ import com.andrew.project.chatGuard.api.constant.BotCommand;
 import com.andrew.project.chatGuard.api.constant.ChatType;
 import com.andrew.project.chatGuard.api.constant.RemoveType;
 import com.andrew.project.chatGuard.api.entities.ChatInfo;
+import com.andrew.project.chatGuard.api.entities.TaskInfo;
 import com.andrew.project.chatGuard.api.executor.Executor;
 import com.andrew.project.chatGuard.api.processor.Processor;
 import com.andrew.project.chatGuard.api.service.ChatInfoService;
+import com.andrew.project.chatGuard.api.service.TaskInfoService;
 import com.andrew.project.chatGuard.mapper.Mapper;
 import com.andrew.project.chatGuard.scheduler.SchedulerRemoveUser;
 import com.andrew.project.chatGuard.util.Util;
@@ -35,9 +37,11 @@ public class DefaultProcessorImpl implements Processor {
 
     private Executor executor;
     private ChatInfoService chatInfoService;
+    private TaskInfoService taskInfoService;
     private SchedulerRemoveUser schedulerRemoveUser;
     private Util util;
 
+    private static final String COMMAND_DELIMITER = " ";
     private static final String BOT_COMMAND = "bot_command";
 
     @Override
@@ -46,52 +50,41 @@ public class DefaultProcessorImpl implements Processor {
         if (ChatType.PRIVATE.equals(chat.getType())) {
             executor.execute(util.createPrivateChatMessage(message));
         } else {
-            List<User> newChatMembers = util.removeThisBotUser(message.getNewChatMembers());
+            List<User> newChatMembers = util.removeBots(message.getNewChatMembers());
             ChatInfo chatInfo = chatInfoService.findById(chat.getId());
             if (!CollectionUtils.isEmpty(newChatMembers)) {
                 LOGGER.info("New users have joined the chat!");
-                if (chatInfo != null) {
-                    if (chatInfo.getBotPermissions().isCanRestrictMembers() && chatInfo.getBotPermissions().isCanDeleteMessages()) {
-                        Message sentMessage = executor.execute(util.createUserWelcomeMessage(message));
-                        for (User newChatMember : newChatMembers) {
-                            Calendar calendar = Calendar.getInstance();
-                            calendar.add(Calendar.MINUTE, chatInfo.getWaitingTime());
-                            RestrictChatMember restrictChatMember = RestrictChatMember.builder()
-                                    .chatId(chat.getId())
-                                    .userId(newChatMember.getId())
-                                    .permissions(new ChatPermissions())
-                                    .untilDate(util.getUnixTime(calendar.getTime()))
-                                    .build();
-                            executor.execute(restrictChatMember);
-                            schedulerRemoveUser.createTask(chatInfo, sentMessage, newChatMember);
-                        }
+                if (chatInfo.getBotPermissions().isCanRestrictMembers() && chatInfo.getBotPermissions().isCanDeleteMessages()) {
+                    Message sentMessage = executor.execute(util.createUserWelcomeMessage(message));
+                    Calendar calendar = Calendar.getInstance();
+                    calendar.add(Calendar.MINUTE, chatInfo.getWaitingTime());
+                    for (User newChatMember : newChatMembers) {
+                        RestrictChatMember restrictChatMember = RestrictChatMember.builder()
+                                .chatId(chat.getId())
+                                .userId(newChatMember.getId())
+                                .permissions(new ChatPermissions())
+                                .untilDate(util.getUnixTime(calendar.getTime()))
+                                .build();
+                        executor.execute(restrictChatMember);
+                        schedulerRemoveUser.createTask(chatInfo, sentMessage, newChatMember);
                     }
-                } else {
-                    LOGGER.error("ChatInfo is empty although it shouldn't be! " + message);
                 }
-            } else if (message.getLeftChatMember() != null && !util.isThisBot(message.getLeftChatMember())) {
+            } else if (message.getLeftChatMember() != null && !message.getLeftChatMember().getIsBot()) {
                 LOGGER.info("User has left chat!");
-                if (chatInfo != null) {
-                    List<String> keyList = schedulerRemoveUser.getTasksKeysByParams(chatInfo.getId(), null, message.getLeftChatMember().getId());
-                    if (!keyList.isEmpty()) {
-                        schedulerRemoveUser.cancelTasks(keyList);
-                    }
-                    if (keyList.size() == 1) {
+                List<TaskInfo> taskInfoList = taskInfoService.findByChatIdAndUserId(chatInfo.getId(), message.getLeftChatMember().getId());
+                if (!taskInfoList.isEmpty()) {
+                    schedulerRemoveUser.cancelTasks(taskInfoList);
+                    List<TaskInfo> activeTaskList = taskInfoService.findByChatIdAndMessageId(chatInfo.getId(), taskInfoList.get(0).getMessageId());
+                    if (activeTaskList.isEmpty()) {
                         DeleteMessage deleteMessage = DeleteMessage.builder()
                                 .chatId(chatInfo.getId())
-                                .messageId(schedulerRemoveUser.getMessageId(keyList.get(0)))
+                                .messageId(taskInfoList.get(0).getMessageId())
                                 .build();
                         executor.execute(deleteMessage);
                     }
-                } else {
-                    LOGGER.error("ChatInfo is empty although it shouldn't be! " + message);
                 }
             } else if (message.hasEntities()) {
-                if (chatInfo != null) {
-                    processCommand(message, chatInfo);
-                } else {
-                    LOGGER.error("ChatInfo is empty although it shouldn't be! " + message);
-                }
+                processCommand(message, chatInfo);
             } else if (message.getMigrateToChatId() != null) {
                 LOGGER.info("Chat has been moved! oldChatId: " + message.getChatId() + ", newChatId: " + message.getMigrateToChatId());
                 chatInfoService.deleteChatInfoById(message.getChatId());
@@ -110,36 +103,48 @@ public class DefaultProcessorImpl implements Processor {
                 if (messageEntity.getText().equals(BotCommand.CHECK_SETTINGS + "@" + util.getUsername())) {
                     executor.execute(util.createSettingsInfoMessage(message, chatInfo));
                 } else if (messageEntity.getText().equals(BotCommand.WAITING_TIME + "@" + util.getUsername())) {
+                    boolean processingError = false;
                     try {
-                        String[] command = message.getText().split(" ");
+                        String[] command = message.getText().split(COMMAND_DELIMITER);
                         if (command.length == 2) {
                             int waitingTime = Integer.parseInt(command[1]);
-                            chatInfo.setWaitingTime(waitingTime);
-                            chatInfoService.save(chatInfo);
-                            executor.execute(util.createSettingsChangedMessage(message));
+                            if (waitingTime > 0) {
+                                chatInfo.setWaitingTime(waitingTime);
+                                chatInfoService.save(chatInfo);
+                                executor.execute(util.createSettingsChangedMessage(message));
+                            } else {
+                                processingError = true;
+                            }
                         } else {
-                            throw new Exception();
+                            processingError = true;
                         }
                     } catch (Exception ignore) {
+                        processingError = true;
+                    }
+                    if (processingError) {
                         executor.execute(util.createWrongFormatBotCommandMessage(message));
                     }
                 } else if (messageEntity.getText().equals(BotCommand.REMOVE_TYPE + "@" + util.getUsername())) {
-                    String[] command = message.getText().split(" ");
+                    boolean processingError = false;
                     try {
+                        String[] command = message.getText().split(COMMAND_DELIMITER);
                         if (command.length == 2) {
                             if (RemoveType.KICK.equals(command[1])) {
                                 chatInfo.setBanUser(false);
                             } else if (RemoveType.BAN.equals(command[1])) {
                                 chatInfo.setBanUser(true);
                             } else {
-                                throw new Exception();
+                                processingError = true;
                             }
                             chatInfoService.save(chatInfo);
                             executor.execute(util.createSettingsChangedMessage(message));
                         } else {
-                            throw new Exception();
+                            processingError = true;
                         }
                     } catch (Exception ignore) {
+                        processingError = true;
+                    }
+                    if (processingError) {
                         executor.execute(util.createWrongFormatBotCommandMessage(message));
                     }
                 }
@@ -150,32 +155,27 @@ public class DefaultProcessorImpl implements Processor {
     @Override
     public void processCallbackQuery(CallbackQuery callbackQuery) {
         ChatInfo chatInfo = chatInfoService.findById(callbackQuery.getMessage().getChatId());
-        if (chatInfo != null) {
-            List<String> keyList = schedulerRemoveUser.getTasksKeysByParams(chatInfo.getId(), callbackQuery.getMessage().getMessageId(), callbackQuery.getFrom().getId());
-            if (!keyList.isEmpty()) {
-                LOGGER.info("User has confirmed that he is not a bot!");
-
-                schedulerRemoveUser.cancelTasks(keyList);
-
-                GetChat getChat = GetChat.builder().chatId(callbackQuery.getMessage().getChatId()).build();
-                Chat chat = executor.execute(getChat);
-                RestrictChatMember restrictChatMember = RestrictChatMember.builder()
-                        .chatId(callbackQuery.getMessage().getChatId())
-                        .userId(callbackQuery.getFrom().getId())
-                        .permissions(chat.getPermissions())
-                        .untilDate(util.getUnixTime(new Date()))
-                        .build();
-                executor.execute(restrictChatMember);
-
-                executor.execute(util.createUserCongratulationsMessage(callbackQuery));
-            }
-            if (keyList.size() == 1) {
+        List<TaskInfo> taskInfoList = taskInfoService.findByChatIdAndUserId(chatInfo.getId(), callbackQuery.getFrom().getId());
+        if (!taskInfoList.isEmpty()) {
+            LOGGER.info("User has confirmed that he is not a bot!");
+            schedulerRemoveUser.cancelTasks(taskInfoList);
+            GetChat getChat = GetChat.builder().chatId(callbackQuery.getMessage().getChatId()).build();
+            Chat chat = executor.execute(getChat);
+            RestrictChatMember restrictChatMember = RestrictChatMember.builder()
+                    .chatId(callbackQuery.getMessage().getChatId())
+                    .userId(callbackQuery.getFrom().getId())
+                    .permissions(chat.getPermissions())
+                    .untilDate(util.getUnixTime(new Date()))
+                    .build();
+            executor.execute(restrictChatMember);
+            if (taskInfoList.size() == 1) {
                 DeleteMessage deleteMessage = DeleteMessage.builder()
                         .chatId(callbackQuery.getMessage().getChatId())
                         .messageId(callbackQuery.getMessage().getMessageId())
                         .build();
                 executor.execute(deleteMessage);
             }
+            executor.execute(util.createUserCongratulationsMessage(callbackQuery));
         }
     }
 
@@ -215,17 +215,13 @@ public class DefaultProcessorImpl implements Processor {
             } else if (newChatMember instanceof ChatMemberAdministrator) {
                 LOGGER.info("Bot has been updated with administrator rights!");
                 ChatInfo chatInfo = chatInfoService.findById(chat.getId());
-                if (chatInfo != null) {
-                    ChatMemberAdministrator chatMemberAdministrator = (ChatMemberAdministrator) newChatMember;
-                    util.updateBotPermissionList(chatInfo, chatMemberAdministrator);
-                    chatInfoService.save(chatInfo);
-                    if (chatInfo.getBotPermissions().isCanRestrictMembers() && chatInfo.getBotPermissions().isCanDeleteMessages()) {
-                        executor.execute(util.createEnoughRightsMessage(chatMemberUpdated));
-                    } else {
-                        executor.execute(util.createNotEnoughRightsMessage(chatMemberUpdated));
-                    }
+                ChatMemberAdministrator chatMemberAdministrator = (ChatMemberAdministrator) newChatMember;
+                util.updateBotPermissionList(chatInfo, chatMemberAdministrator);
+                chatInfoService.save(chatInfo);
+                if (chatInfo.getBotPermissions().isCanRestrictMembers() && chatInfo.getBotPermissions().isCanDeleteMessages()) {
+                    executor.execute(util.createEnoughRightsMessage(chatMemberUpdated));
                 } else {
-                    LOGGER.error("ChatInfo is empty although it shouldn't be! " + chatMemberUpdated);
+                    executor.execute(util.createNotEnoughRightsMessage(chatMemberUpdated));
                 }
             } else {
                 LOGGER.error("Unexpected ChatMember type! " + chatMemberUpdated);
@@ -242,6 +238,11 @@ public class DefaultProcessorImpl implements Processor {
     @Autowired
     public void setChatInfoService(ChatInfoService chatInfoService) {
         this.chatInfoService = chatInfoService;
+    }
+
+    @Autowired
+    public void setTaskInfoRemoveUserService(TaskInfoService taskInfoService) {
+        this.taskInfoService = taskInfoService;
     }
 
     @Autowired

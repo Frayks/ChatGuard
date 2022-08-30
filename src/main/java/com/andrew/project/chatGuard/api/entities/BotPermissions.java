@@ -13,7 +13,6 @@ public class BotPermissions {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
     private boolean canBeEdited;
     private boolean canManageChat;
     private boolean canPostMessages;

@@ -149,11 +149,11 @@ public class Util {
                 .build();
     }
 
-    public SendMessage createUserBannedMessage(ChatInfo chatInfo, User user) {
+    public SendMessage createUserBannedMessage(Long chatId, String firstName) {
         return SendMessage.builder()
-                .text(String.format(translations.getUserBannedMsg(), user.getFirstName()))
+                .text(String.format(translations.getUserBannedMsg(), firstName))
                 .parseMode(PARSE_MODE_MARKDOWN)
-                .chatId(chatInfo.getId())
+                .chatId(chatId)
                 .build();
     }
 
@@ -166,15 +166,11 @@ public class Util {
         return false;
     }
 
-    public boolean isThisBot(User user) {
-        return user.getUserName().equals(username);
-    }
-
-    public List<User> removeThisBotUser(List<User> userList) {
+    public List<User> removeBots(List<User> userList) {
         if (userList == null) {
             return null;
         }
-        userList.removeIf(this::isThisBot);
+        userList.removeIf(User::getIsBot);
         return userList;
     }
 
