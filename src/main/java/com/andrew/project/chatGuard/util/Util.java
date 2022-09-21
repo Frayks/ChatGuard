@@ -4,6 +4,7 @@ import com.andrew.project.chatGuard.api.constant.BotCommand;
 import com.andrew.project.chatGuard.api.constant.RemoveType;
 import com.andrew.project.chatGuard.api.entities.BotPermissions;
 import com.andrew.project.chatGuard.api.entities.ChatInfo;
+import com.andrew.project.chatGuard.api.entities.TaskInfo;
 import com.andrew.project.chatGuard.api.property.Translations;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -65,7 +66,8 @@ public class Util {
         return SendAnimation.builder()
                 .chatId(callbackQuery.getMessage().getChatId())
                 .animation(new InputFile(translations.getAnimationFileId()))
-                .caption(String.format(translations.getUserCongratulationsMsg(), callbackQuery.getFrom().getFirstName()))
+                .caption(String.format(translations.getUserCongratulationsMsg(), callbackQuery.getFrom().getFirstName(), callbackQuery.getFrom().getId()))
+                .parseMode(PARSE_MODE_MARKDOWN)
                 .build();
     }
 
@@ -141,19 +143,19 @@ public class Util {
                 .build();
     }
 
-    public SendMessage createPrivateChatMessage(Message message) {
+    public SendMessage createChatTypeNotSupportedMessage(Chat chat) {
         return SendMessage.builder()
-                .text(translations.getPrivateChatMsg())
+                .text(translations.getChatTypeNotSupportedMsg())
                 .parseMode(PARSE_MODE_MARKDOWN)
-                .chatId(message.getChatId())
+                .chatId(chat.getId())
                 .build();
     }
 
-    public SendMessage createUserBannedMessage(Long chatId, String firstName) {
+    public SendMessage createUserBannedMessage(TaskInfo taskInfo) {
         return SendMessage.builder()
-                .text(String.format(translations.getUserBannedMsg(), firstName))
+                .text(String.format(translations.getUserBannedMsg(), taskInfo.getFirstName(), taskInfo.getUserId()))
                 .parseMode(PARSE_MODE_MARKDOWN)
-                .chatId(chatId)
+                .chatId(taskInfo.getChatId())
                 .build();
     }
 

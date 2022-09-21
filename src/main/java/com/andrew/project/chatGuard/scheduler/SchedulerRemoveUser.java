@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.methods.groupadministration.BanChatMember;
 import org.telegram.telegrambots.meta.api.methods.groupadministration.UnbanChatMember;
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.User;
 
@@ -59,7 +60,7 @@ public class SchedulerRemoveUser implements InitializingBean {
             if (scheduledFuture != null) {
                 scheduledFuture.cancel(false);
                 taskMap.remove(taskId);
-                taskInfoService.deleteTaskInfoRemoveUserById(taskId);
+                taskInfoService.deleteTaskInfoById(taskId);
                 LOGGER.info("Removed task remove user! taskId=" + taskId);
             }
         }
@@ -75,6 +76,8 @@ public class SchedulerRemoveUser implements InitializingBean {
                 .chatId(taskInfo.getChatId())
                 .userId(taskInfo.getUserId())
                 .build();
+        taskInfoService.deleteTaskInfoById(id);
+        executor.execute(util.createUserBannedMessage(taskInfo));
         executor.execute(banChatMember);
         if (!taskInfo.isBanUser()) {
             UnbanChatMember unbanChatMember = UnbanChatMember.builder()
@@ -84,8 +87,14 @@ public class SchedulerRemoveUser implements InitializingBean {
                     .build();
             executor.execute(unbanChatMember);
         }
-        executor.execute(util.createUserBannedMessage(taskInfo.getChatId(), taskInfo.getFirstName()));
-        taskInfoService.deleteTaskInfoRemoveUserById(id);
+        List<TaskInfo> activeTaskList = taskInfoService.findByChatIdAndMessageId(taskInfo.getChatId(), taskInfo.getMessageId());
+        if (activeTaskList.isEmpty()) {
+            DeleteMessage deleteMessage = DeleteMessage.builder()
+                    .chatId(taskInfo.getChatId())
+                    .messageId(taskInfo.getMessageId())
+                    .build();
+            executor.execute(deleteMessage);
+        }
     }
 
 

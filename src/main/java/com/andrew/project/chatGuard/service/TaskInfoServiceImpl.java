@@ -21,6 +21,11 @@ public class TaskInfoServiceImpl implements TaskInfoService {
     }
 
     @Override
+    public List<TaskInfo> findByChatId(Long chatId) {
+        return taskInfoRepository.findByChatId(chatId);
+    }
+
+    @Override
     public List<TaskInfo> findByChatIdAndUserId(Long chatId, Long userId) {
         return taskInfoRepository.findByChatIdAndUserId(chatId, userId);
     }
@@ -36,8 +41,13 @@ public class TaskInfoServiceImpl implements TaskInfoService {
     }
 
     @Override
-    public int deleteTaskInfoRemoveUserById(Long id) {
-        return taskInfoRepository.deleteTaskInfoRemoveUserById(id);
+    public int deleteTaskInfoById(Long id) {
+        return taskInfoRepository.deleteTaskInfoById(id);
+    }
+
+    @Override
+    public int deleteTaskInfoByChatId(Long chatId) {
+        return taskInfoRepository.deleteTaskInfoByChatId(chatId);
     }
 
     @Override

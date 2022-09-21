@@ -48,7 +48,7 @@ public class DefaultProcessorImpl implements Processor {
     public void processMessage(Message message) {
         Chat chat = message.getChat();
         if (ChatType.PRIVATE.equals(chat.getType())) {
-            executor.execute(util.createPrivateChatMessage(message));
+            executor.execute(util.createChatTypeNotSupportedMessage(message.getChat()));
         } else {
             List<User> newChatMembers = util.removeBots(message.getNewChatMembers());
             ChatInfo chatInfo = chatInfoService.findById(chat.getId());
@@ -85,9 +85,6 @@ public class DefaultProcessorImpl implements Processor {
                 }
             } else if (message.hasEntities()) {
                 processCommand(message, chatInfo);
-            } else if (message.getMigrateToChatId() != null) {
-                LOGGER.info("Chat has been moved! oldChatId: " + message.getChatId() + ", newChatId: " + message.getMigrateToChatId());
-                chatInfoService.deleteChatInfoById(message.getChatId());
             }
         }
     }
@@ -192,11 +189,21 @@ public class DefaultProcessorImpl implements Processor {
                 executor.execute(leaveChat);
                 LOGGER.info("Exit from the channel is executed!");
             }
-        } else {
+        } else if (ChatType.GROUP.equals(chat.getType())) {
+            if (newChatMember instanceof ChatMemberLeft) {
+                LOGGER.info("Bot has been removed from group!");
+            } else if (newChatMember instanceof ChatMemberMember) {
+                LOGGER.info("Bot has been added to group!");
+                executor.execute(util.createChatTypeNotSupportedMessage(chat));
+                LeaveChat leaveChat = LeaveChat.builder().chatId(chat.getId()).build();
+                executor.execute(leaveChat);
+                LOGGER.info("Exit from the group is executed!");
+            }
+        } else if (ChatType.SUPERGROUP.equals(chat.getType())) {
             if (newChatMember instanceof ChatMemberMember) {
                 ChatInfo chatInfo = chatInfoService.findById(chat.getId());
                 if (chatInfo == null) {
-                    LOGGER.info("Bot has been added to chat as member!");
+                    LOGGER.info("Bot has been added to supergroup as member!");
                     chatInfo = Mapper.mapToChatInfo(chat);
                     chatInfoService.save(chatInfo);
                     executor.execute(util.createWelcomeMessage(chatMemberUpdated));
@@ -207,11 +214,13 @@ public class DefaultProcessorImpl implements Processor {
                     executor.execute(util.createLostAdministratorRightsMessage(chatMemberUpdated));
                 }
             } else if (newChatMember instanceof ChatMemberLeft) {
-                LOGGER.info("Bot has been removed from chat!");
+                LOGGER.info("Bot has been removed from supergroup!");
                 chatInfoService.deleteChatInfoById(chat.getId());
+                removeAllTasksForChat(chat.getId());
             } else if (newChatMember instanceof ChatMemberBanned) {
-                LOGGER.info("Bot has been banned from chat!");
+                LOGGER.info("Bot has been banned from supergroup!");
                 chatInfoService.deleteChatInfoById(chat.getId());
+                removeAllTasksForChat(chat.getId());
             } else if (newChatMember instanceof ChatMemberAdministrator) {
                 LOGGER.info("Bot has been updated with administrator rights!");
                 ChatInfo chatInfo = chatInfoService.findById(chat.getId());
@@ -226,6 +235,14 @@ public class DefaultProcessorImpl implements Processor {
             } else {
                 LOGGER.error("Unexpected ChatMember type! " + chatMemberUpdated);
             }
+        }
+    }
+
+    private void removeAllTasksForChat(Long chatId) {
+        List<TaskInfo> taskInfoList = taskInfoService.findByChatId(chatId);
+        if (!taskInfoList.isEmpty()) {
+            schedulerRemoveUser.cancelTasks(taskInfoList);
+            taskInfoService.deleteTaskInfoByChatId(chatId);
         }
     }
 

@@ -9,10 +9,14 @@ import java.util.List;
 @Transactional
 public interface TaskInfoRepository extends JpaRepository<TaskInfo, Long> {
 
+    List<TaskInfo> findByChatId(Long chatId);
+
     List<TaskInfo> findByChatIdAndUserId(Long chatId, Long userId);
 
     List<TaskInfo> findByChatIdAndMessageId(Long chatId, Integer messageId);
 
-    int deleteTaskInfoRemoveUserById(Long id);
+    int deleteTaskInfoById(Long id);
+
+    int deleteTaskInfoByChatId(Long chatId);
 
 }
